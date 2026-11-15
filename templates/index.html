@@ -1,0 +1,326 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taskflow in Rust</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="background"></div>
+    <div class="background-overlay"></div>
+
+    <main class="container">
+
+        <!-- Navigation -->
+        <header class="navbar glass">
+            <a href="/" class="logo">
+                <span class="logo-icon">t.</span>
+                taskflow
+            </a>
+
+            <nav>
+                <a href="/" class="nav-item active">⌂ Dashboard</a>
+                <a href="/?sort=status" class="nav-item">▤ My Tasks</a>
+                <a href="/?sort=priority" class="nav-item">✦ Priorities</a>
+            </nav>
+
+            <div class="user-profile">
+                <span class="avatar">MJ</span>
+                <span>My Taskflow</span>
+            </div>
+        </header>
+
+        <!-- Welcome -->
+        <section class="welcome">
+            <div>
+                <span class="eyebrow">MJ's WORKSPACE</span>
+                <h1>Good to see you<span>.</span></h1>
+                <p>Make space for what matters. One task at a time.</p>
+            </div>
+
+            <div class="date-label glass">
+                <span>◷</span> YOUR TASK OVERVIEW
+            </div>
+        </section>
+
+        <!-- Statistics -->
+        <section class="stats-grid">
+
+            <article class="stat-card glass">
+                <div class="stat-header">
+                    <span class="stat-icon purple">▤</span>
+                    <span>TOTAL TASKS</span>
+                </div>
+                <h2>{{ total_count }}</h2>
+                <p>Everything on your list</p>
+                <div class="stat-decoration purple-bg"></div>
+            </article>
+
+            <article class="stat-card glass">
+                <div class="stat-header">
+                    <span class="stat-icon orange">◷</span>
+                    <span>IN PROGRESS</span>
+                </div>
+                <h2>{{ pending_count }}</h2>
+                <p>Things waiting for you</p>
+                <div class="stat-decoration orange-bg"></div>
+            </article>
+
+            <article class="stat-card glass">
+                <div class="stat-header">
+                    <span class="stat-icon green">✓</span>
+                    <span>COMPLETED</span>
+                </div>
+                <h2>{{ completed_count }}</h2>
+                <p>Look at that progress!</p>
+                <div class="stat-decoration green-bg"></div>
+            </article>
+
+            <article class="stat-card glass">
+                <div class="stat-header">
+                    <span class="stat-icon pink">✦</span>
+                    <span>REMAINING</span>
+                </div>
+                <h2>{{ pending_count }}</h2>
+                <p>Your next little victory</p>
+                <div class="stat-decoration pink-bg"></div>
+            </article>
+
+        </section>
+
+        <section class="dashboard-layout">
+
+            <div class="main-content">
+
+                <!-- Add task -->
+                <section class="panel glass">
+                    <div class="section-heading">
+                        <div>
+                            <span class="eyebrow">CAPTURE YOUR IDEAS</span>
+                            <h2>Add a new task</h2>
+                        </div>
+                        <span class="heading-icon">＋</span>
+                    </div>
+
+                    <form action="/" method="post" class="add-form">
+                        <input
+                            type="text"
+                            name="title"
+                            placeholder="What needs to get done?"
+                            maxlength="120"
+                            required
+                        >
+
+                        <select name="priority">
+                            <option value="normal">Normal priority</option>
+                            <option value="low">Low priority</option>
+                            <option value="high">High priority</option>
+                        </select>
+
+                        <button type="submit" class="add-button">
+                            Add task <span>↗</span>
+                        </button>
+                    </form>
+                </section>
+
+                <!-- Task list -->
+                <section class="panel tasks-panel glass">
+
+                    <div class="section-heading">
+                        <div>
+                            <span class="eyebrow">STAY PRODUCTIVE</span>
+                            <h2>Your tasks <span class="count">{{ total_count }}</span></h2>
+                        </div>
+
+                        {% if total_count > 0 %}
+                        <form action="/tasks/clear" method="post">
+                            <button type="submit" class="clear-button">
+                                Clear all ×
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+
+                    <!-- Sorting links -->
+                    <div class="filters">
+                        <span>FILTER:</span>
+
+                        <a href="/"
+                           class="{% if current_sort == "default" %}selected{% endif %}">
+                            Default
+                        </a>
+
+                        <a href="/?sort=priority"
+                           class="{% if current_sort == "priority" %}selected{% endif %}">
+                            High priority
+                        </a>
+
+                        <a href="/?sort=status"
+                           class="{% if current_sort == "status" %}selected{% endif %}">
+                            Incomplete first
+                        </a>
+                    </div>
+
+                    {% if tasks.is_empty() %}
+
+                    <div class="empty-state">
+                        <div>✧</div>
+                        <h3>Your workspace is empty</h3>
+                        <p>Add your first task and start making progress.</p>
+                    </div>
+
+                    {% else %}
+
+                    <div class="task-list">
+
+                        {% for task in tasks %}
+
+                        <article class="task-item {% if task.done %}completed{% endif %}">
+
+                            <div class="task-info">
+
+                                <div class="task-check">
+                                    {% if task.done %}
+                                        ✓
+                                    {% else %}
+                                        <span></span>
+                                    {% endif %}
+                                </div>
+
+                                <div>
+                                    <h3>{{ task.title }}</h3>
+
+                                    <span class="priority {{ task.priority.css_class() }}">
+                                        <span class="badge-dot"></span>
+                                        {{ task.priority.label() }}
+                                    </span>
+                                </div>
+
+                            </div>
+
+                            <div class="task-actions">
+
+                                <form action="/tasks/{{ task.id }}/toggle" method="post">
+                                    <button type="submit" class="action-button complete-button">
+                                        {% if task.done %}
+                                            Undo
+                                        {% else %}
+                                            Complete
+                                        {% endif %}
+                                    </button>
+                                </form>
+
+                                <form action="/tasks/{{ task.id }}/delete" method="post">
+                                    <button
+                                        type="submit"
+                                        class="action-button delete-button"
+                                        aria-label="Delete task">
+                                        ×
+                                    </button>
+                                </form>
+
+                            </div>
+
+                        </article>
+
+                        {% endfor %}
+
+                    </div>
+
+                    {% endif %}
+
+                </section>
+
+            </div>
+
+            <!-- Right sidebar -->
+            <aside class="sidebar">
+
+                <section class="panel focus-panel glass">
+
+                    <span class="eyebrow">A LITTLE REMINDER</span>
+
+                    <h2>Keep your<br>momentum.</h2>
+
+                    <p class="focus-description">
+                        You don't have to do everything today.
+                        Just choose the next thing and begin.
+                    </p>
+
+                    <div class="separator"></div>
+
+                    <div class="progress-info">
+                        <div class="progress-icon">✓</div>
+                        <div>
+                            <strong>{{ completed_count }} / {{ total_count }}</strong>
+                            <span>Tasks completed</span>
+                        </div>
+                    </div>
+
+                    <div class="progress-bar">
+                        {% if total_count > 0 %}
+                            <div class="progress-fill"
+                                 style="width: {{ completed_count * 100 / total_count }}%">
+                            </div>
+                        {% else %}
+                            <div class="progress-fill" style="width: 0%"></div>
+                        {% endif %}
+                    </div>
+
+                    <p class="progress-caption">Progress over perfection.</p>
+
+                </section>
+
+                <section class="panel guide-panel glass">
+
+                    <span class="eyebrow">PRIORITY GUIDE</span>
+                    <h2>Choose your focus</h2>
+
+                    <div class="guide-item">
+                        <span class="guide-dot high-dot"></span>
+                        <div>
+                            <strong>High</strong>
+                            <small>Needs your attention</small>
+                        </div>
+                    </div>
+
+                    <div class="guide-item">
+                        <span class="guide-dot normal-dot"></span>
+                        <div>
+                            <strong>Normal</strong>
+                            <small>Keep it moving</small>
+                        </div>
+                    </div>
+
+                    <div class="guide-item">
+                        <span class="guide-dot low-dot"></span>
+                        <div>
+                            <strong>Low</strong>
+                            <small>Whenever you have time</small>
+                        </div>
+                    </div>
+
+                </section>
+
+                <section class="quote-card glass">
+                    <span>“</span>
+                    <h3>Focus on progress, not perfection.</h3>
+                    <small>A NOTE TO YOUR FUTURE SELF</small>
+                </section>
+
+            </aside>
+
+        </section>
+
+        <footer>
+            <span><b>t.</b> taskflow</span>
+            <span>Built with Rust & a little focus.</span>
+            <a href="/">Back to top ↑</a>
+        </footer>
+
+    </main>
+</body>
+</html>
