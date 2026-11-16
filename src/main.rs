@@ -15,6 +15,7 @@ use std::{
     cmp::Reverse,
     io,
     sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use tokio::{
@@ -26,7 +27,7 @@ use tower_http::services::ServeDir;
 use uuid::Uuid;
 
 
-//priority btn
+// priority btn
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Priority {
@@ -62,8 +63,7 @@ impl Priority {
 }
 
 
-//Task structure
-
+// Task structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Task {
     id: Uuid,
@@ -73,11 +73,10 @@ struct Task {
 }
 
 
-//Application
-//I forget below smart pointers so to know where to use il wrote this
-// Arc:Allows multiple parts of our application to share ownership of the same data.
-// RwLock:Allows multiple readers OR one writer.
-// Vec<Task>:Our in-memory task collection.
+// Application
+// Arc: Allows multiple parts of our application to share ownership.
+// RwLock: Allows multiple readers OR one writer.
+// Vec<Task>: Our in-memory task collection.
 
 #[derive(Clone)]
 struct AppState {
@@ -85,24 +84,23 @@ struct AppState {
 }
 
 
-//new task aka form data
-
+// New task aka form data
 #[derive(Deserialize)]
 struct NewTask {
     title: String,
     priority: Priority,
 }
 
-// sort things
 
+// Sort things
 #[derive(Deserialize, Default)]
 struct SortQuery {
     sort: Option<String>,
+    notice: Option<String>,
 }
 
 
-//askama i find its name funny 
-
+// Askama
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
@@ -111,15 +109,91 @@ struct IndexTemplate {
     pending_count: usize,
     completed_count: usize,
     current_sort: String,
+    flash_message: String,
 }
 
 
-// jSON
+// Quotes shown after actions.
+// Sorting does not use a notice, so it won't show a quote.
+
+fn get_quote(notice: Option<&str>) -> String {
+    let quotes: &[&str] = match notice {
+        Some("added") => &[
+            "One less thing to worry about. Well, eventually.",
+            "Another task enters the battlefield.",
+            "Your future self says thanks.",
+            "Added. Now comes the hard part.",
+            "Small steps, big productivity.",
+            "Your to-do list just got a little longer.",
+            "Look at you, making plans.",
+            "Another one for the list. Good luck.",
+        ],
+
+        Some("completed") => &[
+            "Look at you, getting things done.",
+            "Another one bites the dust.",
+            "Progress is progress. Keep going.",
+            "You actually did it. Impressive.",
+            "That's one less thing on your mind.",
+            "Task defeated. What's next?",
+            "Small victory. Take it.",
+            "Productivity looks good on you.",
+        ],
+
+        Some("undone") => &[
+            "Back on the battlefield, soldier.",
+            "Not finished yet? No worries.",
+            "Everyone deserves a second chance.",
+            "This task isn't escaping that easily.",
+            "The grind continues.",
+            "A little setback never hurt anyone.",
+        ],
+
+        Some("deleted") => &[
+            "Gone. Just like your motivation.",
+            "Sometimes letting go is productive.",
+            "Out of sight, out of mind.",
+            "One less thing taking up space.",
+            "Well, that task had a good run.",
+            "Making room for better things.",
+        ],
+
+        Some("cleared") => &[
+            "A clean slate. Don't mess it up.",
+            "The past is gone. Start fresh.",
+            "Nothing left behind. Nice.",
+            "Fresh start. New problems.",
+            "Your list is finally breathing again.",
+            "Peace at last. For now.",
+        ],
+
+        Some("blank") => &[
+            "You need to give me something to work with.",
+            "A task without a title? Interesting.",
+            "Even I can't read your mind.",
+            "Come on, give that task a name.",
+            "Empty titles aren't going to get things done.",
+        ],
+
+        _ => return String::new(),
+    };
+
+    // Pick a quote using the current time.
+    let index = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos() as usize
+        % quotes.len();
+
+    quotes[index].to_string()
+}
+
+
+// JSON
 
 const DATABASE_FILE: &str = "db.json";
 
 async fn load_tasks() -> io::Result<Vec<Task>> {
-
     match fs::read(DATABASE_FILE).await {
 
         // File exists: convert JSON into Vec<Task>.
@@ -145,10 +219,9 @@ async fn load_tasks() -> io::Result<Vec<Task>> {
 }
 
 
-// saving in jSON
+// Saving in JSON
 
 async fn save_tasks(tasks: &[Task]) -> io::Result<()> {
-
     let json = serde_json::to_vec_pretty(tasks)
         .map_err(io::Error::other)?;
 
@@ -158,8 +231,7 @@ async fn save_tasks(tasks: &[Task]) -> io::Result<()> {
 }
 
 
-// main page
-// it displays dashboard and does following things
+// Main page
 // /?sort=priority = High to Low
 // /?sort=status = Incomplete to Complete
 
@@ -168,27 +240,26 @@ async fn index(
     Query(params): Query<SortQuery>,
 ) -> Result<Html<String>, (StatusCode, String)> {
 
-    // Read, clone in jSON for sorting and display it
-
+    // Read and clone the tasks for sorting and display.
     let mut tasks = state.tasks.read().await.clone();
 
-    // which option was selected man rust is goated with this feature
+    // Which sorting option was selected?
     let current_sort = match params.sort.as_deref() {
         Some("priority") => "priority",
         Some("status") => "status",
         _ => "default",
     };
-    if current_sort == "priority" {
 
+    if current_sort == "priority" {
         tasks.sort_by_key(|task| {
             Reverse(task.priority.rank())
         });
     }
     else if current_sort == "status" {
-
         tasks.sort_by_key(|task| task.done);
     }
 
+    // Dashboard statistics.
     let total_count = tasks.len();
 
     let completed_count = tasks
@@ -198,6 +269,9 @@ async fn index(
 
     let pending_count = total_count - completed_count;
 
+    // Generate a quote if an action provided a notice.
+    let flash_message = get_quote(params.notice.as_deref());
+
     // Give our data to Askama.
     let template = IndexTemplate {
         tasks,
@@ -205,6 +279,7 @@ async fn index(
         pending_count,
         completed_count,
         current_sort: current_sort.to_string(),
+        flash_message,
     };
 
     // Convert the template into HTML.
@@ -221,8 +296,8 @@ async fn index(
 }
 
 
-// add task 
-// get html form convert to jSON
+// Add task
+// Get HTML form and convert it into a Task.
 
 async fn add_task(
     State(state): State<AppState>,
@@ -232,7 +307,7 @@ async fn add_task(
     let title = form.title.trim();
 
     if title.is_empty() {
-        return Ok(Redirect::to("/"));
+        return Ok(Redirect::to("/?notice=blank"));
     }
 
     let task = Task {
@@ -246,18 +321,16 @@ async fn add_task(
 
     tasks.push(task);
 
-    // Save the updated collection to jSON
-
+    // Save the updated collection to JSON.
     save_tasks(&tasks)
         .await
         .map_err(internal_error)?;
 
-
-    Ok(Redirect::to("/"))
+    Ok(Redirect::to("/?notice=added"))
 }
 
 
-// completed/incomplete toggle 
+// Completed / incomplete toggle
 
 async fn toggle_task(
     State(state): State<AppState>,
@@ -267,32 +340,35 @@ async fn toggle_task(
     let mut tasks = state.tasks.write().await;
 
     // Find the task with the matching UUID.
-    let task = tasks
-        .iter_mut()
-        .find(|task| task.id == id);
-
-    match task {
+    let notice = match tasks.iter_mut().find(|task| task.id == id) {
 
         Some(task) => {
-
             task.done = !task.done;
 
-            save_tasks(&tasks)
-                .await
-                .map_err(internal_error)?;
-
-            Ok(Redirect::to("/"))
+            if task.done {
+                "completed"
+            } else {
+                "undone"
+            }
         }
 
-        None => Err((
-            StatusCode::NOT_FOUND,
-            "Task not found".to_string(),
-        )),
-    }
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                "Task not found".to_string(),
+            ));
+        }
+    };
+
+    save_tasks(&tasks)
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Redirect::to(&format!("/?notice={notice}")))
 }
 
 
-//delete task one by one slow and steady
+// Delete task one by one.
 
 async fn delete_task(
     State(state): State<AppState>,
@@ -306,7 +382,6 @@ async fn delete_task(
     tasks.retain(|task| task.id != id);
 
     if tasks.len() == old_length {
-
         return Err((
             StatusCode::NOT_FOUND,
             "Task not found".to_string(),
@@ -318,11 +393,11 @@ async fn delete_task(
         .await
         .map_err(internal_error)?;
 
-    Ok(Redirect::to("/"))
+    Ok(Redirect::to("/?notice=deleted"))
 }
 
 
-//remove everything i meant task gng
+// Remove everything. I mean tasks gng.
 
 async fn clear_tasks(
     State(state): State<AppState>,
@@ -338,11 +413,11 @@ async fn clear_tasks(
         .await
         .map_err(internal_error)?;
 
-    Ok(Redirect::to("/"))
+    Ok(Redirect::to("/?notice=cleared"))
 }
 
 
-//errors not real errors handling them
+// Errors
 
 fn internal_error(
     error: io::Error,
@@ -358,7 +433,7 @@ fn internal_error(
 }
 
 
-//main function so it runs
+// Main function
 
 #[tokio::main]
 async fn main() {
@@ -398,8 +473,8 @@ async fn main() {
     .await
     .expect("Failed to bind address");
 
-    println!("🚀 Task Manager running!");
-    println!("🌐 http://localhost:3000");
+    println!("Task Manager running!");
+    println!("http://localhost:3000");
 
     axum::serve(listener, app)
         .await

@@ -17,8 +17,8 @@
         <!-- Navigation -->
         <header class="navbar glass">
             <a href="/" class="logo">
-                <span class="logo-icon">t.</span>
-                taskflow
+                <span class="logo-icon">TF</span>
+                TaskFlow
             </a>
 
             <nav>
@@ -29,16 +29,19 @@
 
             <div class="user-profile">
                 <span class="avatar">MJ</span>
-                <span>My Taskflow</span>
+                <span>MJ's Tasks</span>
             </div>
         </header>
 
         <!-- Welcome -->
         <section class="welcome">
             <div>
-                <span class="eyebrow">MJ's WORKSPACE</span>
-                <h1>Good to see you<span>.</span></h1>
-                <p>Make space for what matters. One task at a time.</p>
+
+                {% if !flash_message.is_empty() %}
+                    <h1 class="action-quote">{{ flash_message }}</h1>
+                {% else %}
+                    <h1>Make space for what matters. One task at a time.</h1>
+                {% endif %}
             </div>
 
             <div class="date-label glass">
